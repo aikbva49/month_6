@@ -1,20 +1,86 @@
 version: '3'
+
 services:
-  shop_api:
+  web:
     build:
       context: .
-    command: sh -c "python manage.py runserver 0.0.0.0:8000"
+    image: shop_api_web:latest
+    container_name: shop_api_web
+    command: sh -c "python manage.py makemigrations && python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
     ports:
-      - "7001:8000"
-    depends_on:
-      - shop_api_db
-  shop_api_db:
-    image: "postgres:14"
-    environment:
-      - POSTGRES_DB=shop_api_db
-      - POSTGRES_USER=shop_api_user_db
-      - POSTGRES_PASSWORD=12345
+      - "8008:8000"
+    env_file:
+      - .env
     volumes:
-      - 'shop_api-data:/var/lib/postgresql/data'
+      - .:/app
+    depends_on:
+      - db
+      - redis
+
+  db:
+    image: postgres:14
+    container_name: shop_api_db
+    environment:
+      - POSTGRES_DB=shop_db
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=1234
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+
+  redis:
+    image: redis:7
+    container_name: shop_api_redis
+    volumes:
+      - redis-data:/data
+    ports:
+      - "6379:6379"
+
+  celery_worker:
+    build:
+      context: .
+    image: shop_api_celery_worker:latest
+    container_name: shop_api_celery_worker
+    command: celery -A shop_api worker --loglevel=info
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+
+  celery_beat:
+    build:
+      context: .
+    image: shop_api_celery_beat:latest
+    container_name: shop_api_celery_beat
+    command: celery -A shop_api beat --loglevel=info
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+
+  celery_flower:
+    build:
+      context: .
+    image: shop_api_celery_flower:latest
+    container_name: shop_api_celery_flower
+    command: celery -A shop_api flower --port=5555 --loglevel=info
+    ports:
+      - "5555:5555"
+    depends_on:
+      - redis
+      - db
+    env_file:
+      - .env
+    volumes:
+      - .:/app
+
 volumes:
-  shop_api-data:
+  db-data:
+  redis-data:
